@@ -388,6 +388,32 @@ describe('hydrateBrowserSession', () => {
     expect(store.getState().browserPagesByWorkspace['workspace-drop']).toBeUndefined()
     expect(store.getState().browserTabsByWorktree[survivingWorktreeId]).toHaveLength(1)
   })
+
+  it('redacts Kagi session tokens from hydrated browser history', () => {
+    const store = createTestStore()
+
+    store.getState().hydrateBrowserSession({
+      browserUrlHistory: [
+        {
+          url: 'https://kagi.com/search?token=secret&q=hello+world',
+          normalizedUrl: 'https://kagi.com/search?token=secret&q=hello+world',
+          title: 'Kagi Search',
+          lastVisitedAt: 1,
+          visitCount: 1
+        }
+      ]
+    } as never)
+
+    expect(store.getState().browserUrlHistory).toEqual([
+      {
+        url: 'https://kagi.com/search?q=hello+world',
+        normalizedUrl: 'https://kagi.com/search?q=hello+world',
+        title: 'Kagi Search',
+        lastVisitedAt: 1,
+        visitCount: 1
+      }
+    ])
+  })
 })
 
 // Why: the leak this PR fixes lives inside the thunk itself. removeWorktree
