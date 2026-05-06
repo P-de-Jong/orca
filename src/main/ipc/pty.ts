@@ -8,6 +8,7 @@ import { randomUUID } from 'crypto'
 import { type BrowserWindow, ipcMain, app } from 'electron'
 export { getBashShellReadyRcfileContent } from '../providers/local-pty-shell-ready'
 import type { OrcaRuntimeService } from '../runtime/orca-runtime'
+import type { Store } from '../persistence'
 import type { GlobalSettings } from '../../shared/types'
 import { openCodeHookService } from '../opencode/hook-service'
 import { agentHookServer } from '../agent-hooks/server'
@@ -25,6 +26,13 @@ import {
 } from '../claude-accounts/live-pty-gate'
 import { applyTerminalAttributionEnv } from '../attribution/terminal-attribution'
 import { registerPty, unregisterPty } from '../memory/pty-registry'
+import { track } from '../telemetry/client'
+import { classifyError } from '../telemetry/classify-error'
+import {
+  agentKindSchema,
+  launchSourceSchema,
+  requestKindSchema
+} from '../../shared/telemetry-events'
 
 // ─── Provider Registry ──────────────────────────────────────────────
 // Routes PTY operations by connectionId. null = local provider.
@@ -409,7 +417,8 @@ export function registerPtyHandlers(
   runtime?: OrcaRuntimeService,
   getSelectedCodexHomePath?: () => string | null,
   getSettings?: () => GlobalSettings,
-  prepareClaudeAuth?: () => Promise<ClaudeRuntimeAuthPreparation>
+  prepareClaudeAuth?: () => Promise<ClaudeRuntimeAuthPreparation>,
+  store?: Store
 ): void {
   // Remove any previously registered handlers so we can re-register them
   // (e.g. when macOS re-activates the app and creates a new window).
@@ -654,7 +663,7 @@ export function registerPtyHandlers(
       // Why: shutdown() is async but the PtyController interface is sync.
       // Swallowing the rejection prevents an unhandled promise rejection crash
       // if the remote SSH session is already gone.
-      void provider.shutdown(ptyId, false).catch(() => {})
+      void provider.shutdown(ptyId, { immediate: false }).catch(() => {})
       clearProviderPtyState(ptyId)
       markClaudePtyExited(ptyId)
       runtime?.onPtyExit(ptyId, -1)
@@ -715,6 +724,25 @@ export function registerPtyHandlers(
         worktreeId?: string
         sessionId?: string
         shellOverride?: string
+        // Why: closes the SIGKILL race documented in INVESTIGATION.md by
+        // letting main patch + sync-flush the (worktreeId, tabId, leafId →
+        // ptyId) binding before pty:spawn returns. Only the renderer's
+        // user-typing-Ctrl+T daemon-host path threads these; mobile/runtime
+        // CLI/SSH spawns leave them undefined and the main-side guard
+        // short-circuits.
+        tabId?: string
+        leafId?: string
+        // Why: telemetry-plan.md§Agent launch semantics. The renderer
+        // threads what Orca was *asked* to launch through this field; main
+        // fires `agent_started` only after `provider.spawn` resolves. Loose
+        // typing on the IPC boundary because the main-side schema
+        // validator is the single enforcement point — `track()` will drop
+        // the event if any field is outside its closed enum.
+        telemetry?: {
+          agent_kind?: unknown
+          launch_source?: unknown
+          request_kind?: unknown
+        }
       }
     ) => {
       const provider = getProvider(args.connectionId)
@@ -879,6 +907,30 @@ export function registerPtyHandlers(
         if (isMintedSessionId && effectiveSessionId !== undefined) {
           clearProviderPtyState(effectiveSessionId)
         }
+        // Why: telemetry-plan.md§agent_error — when the renderer threaded
+        // agent_kind through args.telemetry, attribute the error to that agent.
+        // Otherwise fall back to sniffing the command for `claude` (the one
+        // agent the main process can identify on its own via the existing
+        // `isClaudeLaunchCommand` regex used for auth gating). Bare-shell
+        // catches and unknown-agent catches without renderer telemetry remain
+        // unattributed. The event still emits with a classified `error_class`;
+        // raw error messages are dropped at the telemetry validator boundary.
+        const rendererAgentKindParse =
+          args.telemetry?.agent_kind !== undefined
+            ? agentKindSchema.safeParse(args.telemetry.agent_kind)
+            : null
+        const errorAgentKind = rendererAgentKindParse?.success
+          ? rendererAgentKindParse.data
+          : isClaudeLaunch
+            ? ('claude-code' as const)
+            : null
+        if (errorAgentKind) {
+          const classified = classifyError(err)
+          track('agent_error', {
+            agent_kind: errorAgentKind,
+            error_class: classified.error_class
+          })
+        }
         throw err
       }
       ptyOwnership.set(result.id, args.connectionId ?? null)
@@ -886,6 +938,27 @@ export function registerPtyHandlers(
         runtime?.registerPreAllocatedHandleForPty(result.id, preAllocatedHandle)
       }
       ptySizes.set(result.id, { cols: args.cols, rows: args.rows })
+      // Why: closes the SIGKILL-between-spawn-and-persist race (Issue #217).
+      // The renderer's debounced session writer runs in parallel for every
+      // other field; we patch the load-bearing (tab.ptyId, ptyIdsByLeafId)
+      // binding synchronously so a force-quit in the ~450 ms debounce window
+      // can no longer orphan the daemon's history dir. Other spawn callers
+      // (mobile, runtime CLI, SSH) leave tabId/leafId undefined and this
+      // short-circuits — preserves their existing behavior.
+      if (
+        isDaemonHostSpawn &&
+        store &&
+        args.worktreeId !== undefined &&
+        args.tabId !== undefined &&
+        args.leafId !== undefined
+      ) {
+        store.persistPtyBinding({
+          worktreeId: args.worktreeId,
+          tabId: args.tabId,
+          leafId: args.leafId,
+          ptyId: result.id
+        })
+      }
       // Why: pre-signal cooperation gate — when the renderer has declared it
       // will own the serializer for this paneKey, suppress the daemon-snapshot
       // seed so the renderer's hydration path (maybeHydrateHeadlessFromRenderer)
@@ -993,6 +1066,28 @@ export function registerPtyHandlers(
               : null
         })
       }
+      // Why: telemetry-plan.md§Agent launch semantics — fire `agent_started`
+      // only after `provider.spawn` resolved. The renderer threads
+      // `args.telemetry` through the spawn IPC for every launch we want to
+      // attribute; bare-shell tabs (no agent) leave the field undefined and
+      // do not produce an event. Each field is parsed against its closed
+      // enum here so a malformed renderer payload (or a spoofed IPC) does
+      // not poison the event — `safeParse` failure drops that field, and
+      // if any required field is missing we skip the event entirely. The
+      // main-side `track()` validator re-runs the schema on the full
+      // payload as a second defense-in-depth check.
+      if (args.telemetry) {
+        const agentKindParse = agentKindSchema.safeParse(args.telemetry.agent_kind)
+        const launchSourceParse = launchSourceSchema.safeParse(args.telemetry.launch_source)
+        const requestKindParse = requestKindSchema.safeParse(args.telemetry.request_kind)
+        if (agentKindParse.success && launchSourceParse.success && requestKindParse.success) {
+          track('agent_started', {
+            agent_kind: agentKindParse.data,
+            launch_source: launchSourceParse.data,
+            request_kind: requestKindParse.data
+          })
+        }
+      }
       return result
     }
   )
@@ -1054,13 +1149,16 @@ export function registerPtyHandlers(
       .catch(() => {})
   })
 
-  ipcMain.handle('pty:kill', async (_event, args: { id: string }) => {
+  ipcMain.handle('pty:kill', async (_event, args: { id: string; keepHistory?: boolean }) => {
     // Why: try/finally ensures ptyOwnership is cleaned up even if shutdown
     // throws (e.g. SSH connection already gone or daemon session already
     // reaped). Swallowing the error prevents noisy renderer-side rejections
     // when killing orphaned sessions that the daemon has already discarded.
     try {
-      await getProviderForPty(args.id).shutdown(args.id, true)
+      await getProviderForPty(args.id).shutdown(args.id, {
+        immediate: true,
+        keepHistory: args.keepHistory ?? false
+      })
     } catch {
       /* session already dead — cleanup below handles the rest */
     } finally {
