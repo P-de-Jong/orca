@@ -162,7 +162,11 @@ function normalizeUrl(url: string): string {
   if (trimmed.length === 0) {
     return 'about:blank'
   }
-  return trimmed
+  // Why: setBrowserPageUrl is the single sink for URL updates from did-navigate,
+  // CDP navigation-update IPC, and direct address-bar submits. Redact at this
+  // boundary so the Kagi bearer token cannot reach BrowserPage.url, which is
+  // persisted to disk via the workspace session writer.
+  return redactKagiSessionToken(trimmed)
 }
 
 function normalizeBrowserTitle(title: string | null | undefined, url: string): string {

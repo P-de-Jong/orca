@@ -110,6 +110,20 @@ describe('browser-url helpers', () => {
     expect(normalizeKagiSessionLink('https://kagi.com/search?q=%s')).toBeNull()
     expect(normalizeKagiSessionLink('http://kagi.com/search?token=secret')).toBeNull()
     expect(normalizeKagiSessionLink('https://example.com/search?token=secret')).toBeNull()
+    expect(normalizeKagiSessionLink('https://user:pass@kagi.com/search?token=secret')).toBeNull()
+    expect(normalizeKagiSessionLink('https://kagi.com:8443/search?token=secret')).toBeNull()
+  })
+
+  it('accepts kagi.com/search/ with trailing slash', () => {
+    expect(normalizeKagiSessionLink('https://kagi.com/search/?token=secret')).toBe(
+      'https://kagi.com/search/?token=secret'
+    )
+  })
+
+  it('collapses duplicate token params in Kagi private session links', () => {
+    expect(normalizeKagiSessionLink('https://kagi.com/search?token=A&token=B')).toBe(
+      'https://kagi.com/search?token=A'
+    )
   })
 
   it('redacts Kagi private session tokens from displayable URLs', () => {
@@ -118,6 +132,9 @@ describe('browser-url helpers', () => {
     )
     expect(redactKagiSessionToken('https://kagi.com/search?q=hello+world')).toBe(
       'https://kagi.com/search?q=hello+world'
+    )
+    expect(redactKagiSessionToken('https://kagi.com/search/?token=secret&q=hi')).toBe(
+      'https://kagi.com/search/?q=hi'
     )
   })
 })

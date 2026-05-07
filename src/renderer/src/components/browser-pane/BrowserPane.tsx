@@ -1274,7 +1274,7 @@ function BrowserPagePane({
           loadError: {
             code: -1,
             description: 'This site could not be reached.',
-            validatedUrl: attemptedUrl
+            validatedUrl: redactKagiSessionToken(attemptedUrl)
           }
         })
       } catch {
@@ -1538,7 +1538,9 @@ function BrowserPagePane({
         loadError: {
           code: 0,
           description: 'Enter a valid http(s) or localhost URL.',
-          validatedUrl: addressBarValue.trim() || 'about:blank'
+          // Why: the user may have pasted a Kagi URL with a token; redact
+          // before persisting it into BrowserPage.loadError.
+          validatedUrl: redactKagiSessionToken(addressBarValue.trim()) || 'about:blank'
         }
       })
       return

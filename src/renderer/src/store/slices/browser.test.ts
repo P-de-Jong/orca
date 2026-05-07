@@ -416,6 +416,45 @@ describe('hydrateBrowserSession', () => {
   })
 })
 
+// Why: setBrowserPageUrl is the single sink for URL updates from did-navigate,
+// the agent-browser CDP nav-update IPC, and direct address-bar submits. Pin
+// redaction at this boundary so a Kagi bearer token cannot reach the
+// persisted BrowserPage.url field via any caller that forgot to redact.
+describe('setBrowserPageUrl redaction', () => {
+  it('redacts Kagi session tokens before storing the page URL', () => {
+    const store = createTestStore()
+    const worktreeId = 'repo1::/tmp/wt-1'
+    seedStore(store, {
+      activeRepoId: 'repo1',
+      activeWorktreeId: worktreeId,
+      activeTabType: 'browser',
+      worktreesByRepo: {
+        repo1: [makeWorktree({ id: worktreeId, repoId: 'repo1', path: '/tmp/wt-1' })]
+      },
+      groupsByWorktree: {
+        [worktreeId]: [makeTabGroup({ id: 'group-1', worktreeId, activeTabId: null, tabOrder: [] })]
+      },
+      activeGroupIdByWorktree: { [worktreeId]: 'group-1' },
+      browserTabsByWorktree: {},
+      unifiedTabsByWorktree: {}
+    })
+
+    const ws = store.getState().createBrowserTab(worktreeId, 'about:blank', { title: 'New Tab' })
+    const pageId = store.getState().browserPagesByWorkspace[ws.id]?.[0]?.id
+    expect(pageId).toBeDefined()
+
+    store
+      .getState()
+      .setBrowserPageUrl(pageId!, 'https://kagi.com/search?token=secret&q=hello+world')
+
+    const page = store.getState().browserPagesByWorkspace[ws.id]?.[0]
+    expect(page?.url).toBe('https://kagi.com/search?q=hello+world')
+    expect(store.getState().browserTabsByWorktree[worktreeId]?.[0]?.url).toBe(
+      'https://kagi.com/search?q=hello+world'
+    )
+  })
+})
+
 // Why: the leak this PR fixes lives inside the thunk itself. removeWorktree
 // and runSleepWorktree tests stub this thunk, so destroy-call regressions in
 // its body would be invisible there. These tests pin the thunk directly.
