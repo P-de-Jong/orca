@@ -1588,6 +1588,19 @@ export type GitStatusEntry = GitUncommittedEntry
 export type GitStatusResult = {
   entries: GitStatusEntry[]
   conflictOperation: GitConflictOperation
+  head?: string
+  branch?: string
+}
+
+// Why: when hasUpstream is false, ahead/behind are placeholder zeros, not a
+// "sync" signal — callers must check hasUpstream before treating 0/0 as in-sync.
+// Kept separate from GitStatusResult because upstream lookup can fail for
+// reasons unrelated to working-tree status (e.g., no upstream is expected).
+export type GitUpstreamStatus = {
+  hasUpstream: boolean
+  upstreamName?: string
+  ahead: number
+  behind: number
 }
 
 export type GitBranchChangeStatus = 'modified' | 'added' | 'deleted' | 'renamed' | 'copied'
