@@ -139,6 +139,14 @@
   color: var(--muted-foreground);
 }
 
+.rich-markdown-editor summary.is-empty::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+  color: color-mix(in srgb, var(--muted-foreground) 75%, transparent);
+}
+
 .rich-markdown-editor h1,
 .rich-markdown-editor h2,
 .rich-markdown-editor h3,
@@ -307,11 +315,11 @@
 
 .rich-markdown-editor .orca-details[data-type='details'] > button {
   position: absolute;
-  top: 0.15em;
+  top: 0;
   left: 0.15em;
   display: flex;
   width: 1.2em;
-  height: 1.2em;
+  height: 1.6em;
   align-items: center;
   justify-content: center;
   border: 0;
@@ -343,6 +351,10 @@
   font-weight: 700;
   letter-spacing: -0.02em;
   line-height: 1.3;
+}
+
+.rich-markdown-editor .orca-details[data-type='details'][data-orca-toggle='heading-1'] > button {
+  height: 2.405em;
 }
 
 .rich-markdown-editor blockquote {

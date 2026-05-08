@@ -63,10 +63,12 @@ export type SlashCommand = {
 }
 
 function insertToggle(editor: Editor, variant?: 'heading-1'): void {
+  const insertAt = editor.state.selection.from
+
   editor
     .chain()
     .focus()
-    .insertContent({
+    .insertContentAt(insertAt, {
       type: 'details',
       attrs: {
         open: true,
@@ -74,8 +76,7 @@ function insertToggle(editor: Editor, variant?: 'heading-1'): void {
       },
       content: [
         {
-          type: 'detailsSummary',
-          content: [{ type: 'text', text: 'Toggle' }]
+          type: 'detailsSummary'
         },
         {
           type: 'detailsContent',
@@ -83,6 +84,7 @@ function insertToggle(editor: Editor, variant?: 'heading-1'): void {
         }
       ]
     })
+    .setTextSelection(insertAt + 1)
     .run()
 }
 

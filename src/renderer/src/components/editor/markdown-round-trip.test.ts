@@ -41,6 +41,27 @@ function slashCommandMarkdown(commandId: SlashCommandId): string {
   }
 }
 
+function slashCommandSelectionParent(commandId: SlashCommandId): string {
+  const editor = new Editor({
+    element: null,
+    extensions: createRichMarkdownExtensions(),
+    content: '',
+    contentType: 'markdown'
+  })
+
+  try {
+    const command = slashCommands.find((item) => item.id === commandId)
+    if (!command) {
+      throw new Error(`Missing slash command: ${commandId}`)
+    }
+
+    command.run(editor)
+    return editor.state.selection.$from.parent.type.name
+  } finally {
+    editor.destroy()
+  }
+}
+
 describe('rich markdown round trip', () => {
   it('preserves inline html inside paragraphs', () => {
     expect(roundTripMarkdown('Before <span>hi</span> after\n')).toBe('Before <span>hi</span> after')
@@ -84,14 +105,16 @@ describe('rich markdown round trip', () => {
 
   it('inserts editable text toggles from slash commands', () => {
     expect(slashCommandMarkdown('toggle-text')).toBe(
-      '<details class="orca-details" open>\n<summary>Toggle</summary>\n\n\n\n</details>'
+      '<details class="orca-details" open>\n<summary></summary>\n\n\n\n</details>'
     )
+    expect(slashCommandSelectionParent('toggle-text')).toBe('detailsSummary')
   })
 
   it('inserts editable heading toggles from slash commands', () => {
     expect(slashCommandMarkdown('toggle-h1')).toBe(
-      '<details class="orca-details" data-orca-toggle="heading-1" open>\n<summary>Toggle</summary>\n\n\n\n</details>'
+      '<details class="orca-details" data-orca-toggle="heading-1" open>\n<summary></summary>\n\n\n\n</details>'
     )
+    expect(slashCommandSelectionParent('toggle-h1')).toBe('detailsSummary')
   })
 
   it('preserves markdown tables', () => {

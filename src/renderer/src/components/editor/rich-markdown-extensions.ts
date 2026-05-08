@@ -1,9 +1,10 @@
-import type { AnyExtension } from '@tiptap/core'
+import type { AnyExtension, Editor } from '@tiptap/core'
 import StarterKit from '@tiptap/starter-kit'
 import Link from '@tiptap/extension-link'
 import Image from '@tiptap/extension-image'
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight'
 import { Details, DetailsContent, DetailsSummary } from '@tiptap/extension-details'
+import type { PlaceholderOptions } from '@tiptap/extension-placeholder'
 import Placeholder from '@tiptap/extension-placeholder'
 import TaskList from '@tiptap/extension-task-list'
 import TaskItem from '@tiptap/extension-task-item'
@@ -12,6 +13,7 @@ import { TableCell } from '@tiptap/extension-table-cell'
 import { TableHeader } from '@tiptap/extension-table-header'
 import { TableRow } from '@tiptap/extension-table-row'
 import { Markdown } from '@tiptap/markdown'
+import { TextSelection } from '@tiptap/pm/state'
 import { createLowlight, common } from 'lowlight'
 import { loadLocalImageSrc, onImageCacheInvalidated } from './useLocalImageSrc'
 import { RawMarkdownHtmlBlock, RawMarkdownHtmlInline } from './raw-markdown-html'
@@ -32,7 +34,70 @@ import { DragSelectionGuard } from './drag-selection-guard'
 const lowlight = createLowlight(common)
 
 const RICH_MARKDOWN_PLACEHOLDER = 'Write markdown… Type / for blocks.'
+const TOGGLE_TEXT_PLACEHOLDER = 'text'
+const TOGGLE_HEADING_PLACEHOLDER = 'Heading 1'
+
+function getRichMarkdownPlaceholder({
+  editor,
+  node,
+  pos
+}: Parameters<
+  Extract<PlaceholderOptions['placeholder'], (...args: never[]) => string>
+>[0]): string {
+  if (node.type.name !== 'detailsSummary') {
+    return RICH_MARKDOWN_PLACEHOLDER
+  }
+
+  const parent = editor.state.doc.resolve(pos).parent
+  return parent.type.name === 'details' && parent.attrs.variant === 'heading-1'
+    ? TOGGLE_HEADING_PLACEHOLDER
+    : TOGGLE_TEXT_PLACEHOLDER
+}
+
+export function moveDetailsSummarySelectionToContent(editor: Editor): boolean {
+  const { state, view } = editor
+  const { selection } = state
+  const { $from, empty } = selection
+
+  if (!empty || $from.parent.type.name !== 'detailsSummary') {
+    return false
+  }
+
+  const detailsDepth = $from.depth - 1
+  if (detailsDepth < 1) {
+    return false
+  }
+
+  const detailsNode = $from.node(detailsDepth)
+  if (detailsNode.type.name !== 'details' || detailsNode.attrs.open === false) {
+    return false
+  }
+
+  const detailsContent = detailsNode.child(1)
+  if (detailsContent?.type.name !== 'detailsContent') {
+    return false
+  }
+
+  const detailsStart = $from.before(detailsDepth)
+  const detailsContentStart = detailsStart + 1 + detailsNode.child(0).nodeSize
+  const firstBodyNode = detailsContent.firstChild
+  if (!firstBodyNode?.isTextblock) {
+    return false
+  }
+
+  const targetPos = detailsContentStart + 2
+  const tr = state.tr.setSelection(TextSelection.near(state.doc.resolve(targetPos), 1))
+  tr.scrollIntoView()
+  view.dispatch(tr)
+
+  return true
+}
+
 const OrcaDetails = Details.extend({
+  // Why: details summary Enter must run before StarterKit's generic paragraph
+  // splitting so typing a toggle title then pressing Enter moves into the body.
+  priority: 1000,
+
   addAttributes() {
     return {
       ...this.parent?.(),
@@ -43,6 +108,15 @@ const OrcaDetails = Details.extend({
         renderHTML: ({ variant }) =>
           variant === 'heading-1' ? { 'data-orca-toggle': 'heading-1' } : {}
       }
+    }
+  },
+  addKeyboardShortcuts() {
+    const parentShortcuts = this.parent?.() ?? {}
+
+    return {
+      ...parentShortcuts,
+      Enter: ({ editor }) =>
+        moveDetailsSummarySelectionToContent(editor) || parentShortcuts.Enter?.({ editor }) || false
     }
   },
   markdownTokenizer: {
@@ -102,6 +176,12 @@ const OrcaDetails = Details.extend({
 
     return `<details ${attrs}>\n<summary>${summaryText}</summary>\n\n${body}\n\n</details>`
   }
+})
+
+const OrcaDetailsContent = DetailsContent.extend({
+  // Why: detailsContent's double-Enter escape must run before StarterKit's
+  // generic paragraph split, otherwise users can get stuck inside a toggle.
+  priority: 1000
 })
 
 export function createRichMarkdownExtensions({
@@ -214,7 +294,7 @@ export function createRichMarkdownExtensions({
       }
     }),
     DetailsSummary,
-    DetailsContent,
+    OrcaDetailsContent,
     Table.configure({
       resizable: false
     }),
@@ -235,7 +315,8 @@ export function createRichMarkdownExtensions({
   if (includePlaceholder) {
     extensions.push(
       Placeholder.configure({
-        placeholder: RICH_MARKDOWN_PLACEHOLDER
+        includeChildren: true,
+        placeholder: getRichMarkdownPlaceholder
       })
     )
   }
