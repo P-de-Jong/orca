@@ -71,6 +71,17 @@ describe('rich markdown round trip', () => {
     )
   })
 
+  it('preserves details blocks with raw html as passthrough html', () => {
+    const input = '<details><summary><span>Toggle</span></summary><p><em>Body</em></p></details>\n'
+    expect(roundTripMarkdown(input)).toBe(input.trimEnd())
+  })
+
+  it('preserves nested details blocks as passthrough html', () => {
+    const input =
+      '<details><summary>Outer</summary><details><summary>Inner</summary><p>Body</p></details></details>\n'
+    expect(roundTripMarkdown(input)).toBe(input.trimEnd())
+  })
+
   it('inserts editable text toggles from slash commands', () => {
     expect(slashCommandMarkdown('toggle-text')).toBe(
       '<details class="orca-details" open>\n<summary>Toggle</summary>\n\n\n\n</details>'

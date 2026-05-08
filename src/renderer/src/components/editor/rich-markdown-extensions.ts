@@ -16,9 +16,10 @@ import { createLowlight, common } from 'lowlight'
 import { loadLocalImageSrc, onImageCacheInvalidated } from './useLocalImageSrc'
 import { RawMarkdownHtmlBlock, RawMarkdownHtmlInline } from './raw-markdown-html'
 import {
-  DETAILS_CLOSE_TAG,
   detailsBodyHtmlToMarkdown,
   escapeDetailsHtml,
+  isEditableDetailsHtmlBlock,
+  matchDetailsHtmlBlock,
   parseDetailsAttributes,
   renderDetailsAttributes,
   type DetailsHtmlToken
@@ -49,31 +50,24 @@ const OrcaDetails = Details.extend({
     level: 'block',
     start: '<details',
     tokenize(src, _tokens, lexer) {
-      const openingMatch = src.match(/^<details\b([^>]*)>/i)
-      if (!openingMatch) {
+      const detailsBlock = matchDetailsHtmlBlock(src, 0)
+      if (!detailsBlock || !isEditableDetailsHtmlBlock(detailsBlock)) {
         return undefined
       }
 
-      const closingIndex = src.toLowerCase().indexOf(DETAILS_CLOSE_TAG, openingMatch[0].length)
-      if (closingIndex === -1) {
-        return undefined
-      }
-
-      const raw = src.slice(0, closingIndex + DETAILS_CLOSE_TAG.length)
-      const inner = src.slice(openingMatch[0].length, closingIndex)
-      const summaryMatch = inner.match(/^\s*<summary\b[^>]*>([\s\S]*?)<\/summary>/i)
+      const summaryMatch = detailsBlock.inner.match(/^\s*<summary\b[^>]*>([\s\S]*?)<\/summary>/i)
       if (!summaryMatch) {
         return undefined
       }
 
       const summary = summaryMatch[1].trim()
-      const body = inner.slice((summaryMatch.index ?? 0) + summaryMatch[0].length)
+      const body = detailsBlock.inner.slice((summaryMatch.index ?? 0) + summaryMatch[0].length)
 
       return {
         type: 'details',
-        raw,
+        raw: detailsBlock.raw,
         block: true,
-        attributes: parseDetailsAttributes(openingMatch[1] ?? ''),
+        attributes: parseDetailsAttributes(detailsBlock.openingAttributes),
         summaryTokens: lexer.inlineTokens(summary),
         bodyTokens: lexer.blockTokens(detailsBodyHtmlToMarkdown(body))
       } as DetailsHtmlToken

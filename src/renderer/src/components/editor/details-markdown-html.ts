@@ -8,6 +8,13 @@ export type DetailsHtmlToken = MarkdownToken & {
   summaryTokens?: MarkdownToken[]
 }
 
+export type DetailsHtmlBlock = {
+  raw: string
+  openingAttributes: string
+  inner: string
+  hasNestedDetails: boolean
+}
+
 export function escapeDetailsHtml(value: string): string {
   return value
     .replaceAll('&', '&amp;')
@@ -51,18 +58,65 @@ export function isSupportedDetailsHtml(raw: string): boolean {
   return /^<\/?(?:details|summary)\b/i.test(raw.trim())
 }
 
-export function matchSupportedDetailsHtmlBlock(content: string, start: number): string | null {
+export function matchDetailsHtmlBlock(content: string, start: number): DetailsHtmlBlock | null {
   const openingMatch = content.slice(start).match(/^<details\b[^>]*>/i)
   if (!openingMatch) {
     return null
   }
 
-  const closingIndex = content
-    .toLowerCase()
-    .indexOf(DETAILS_CLOSE_TAG, start + openingMatch[0].length)
-  if (closingIndex === -1) {
-    return null
+  const detailsTagPattern = /<\/?details\b[^>]*>/gi
+  detailsTagPattern.lastIndex = start
+
+  let depth = 0
+  let hasNestedDetails = false
+
+  for (;;) {
+    const tagMatch = detailsTagPattern.exec(content)
+    if (!tagMatch) {
+      return null
+    }
+
+    const tag = tagMatch[0]
+    const isClosingTag = /^<\/details\b/i.test(tag)
+
+    if (isClosingTag) {
+      depth -= 1
+      if (depth === 0) {
+        const closingEnd = tagMatch.index + tag.length
+        return {
+          raw: content.slice(start, closingEnd),
+          openingAttributes: openingMatch[0].replace(/^<details\b/i, '').replace(/>$/u, ''),
+          inner: content.slice(start + openingMatch[0].length, tagMatch.index),
+          hasNestedDetails
+        }
+      }
+    } else {
+      if (depth > 0) {
+        hasNestedDetails = true
+      }
+      depth += 1
+    }
+  }
+}
+
+export function isEditableDetailsHtmlBlock(block: DetailsHtmlBlock): boolean {
+  if (block.hasNestedDetails) {
+    return false
   }
 
-  return content.slice(start, closingIndex + DETAILS_CLOSE_TAG.length)
+  const summaryMatch = block.inner.match(/^\s*<summary\b[^>]*>([\s\S]*?)<\/summary>/i)
+  if (!summaryMatch) {
+    return false
+  }
+
+  if (/<\/?[A-Za-z][\w.:-]*(?:\s[^<>]*?)?\/?>/.test(summaryMatch[1])) {
+    return false
+  }
+
+  const allowedHtmlRemoved = block.inner
+    .replace(/^\s*<summary\b[^>]*>[\s\S]*?<\/summary>/i, '')
+    .replace(/<\/?p\b[^>]*>/gi, '')
+    .replace(/<br\s*\/?>/gi, '')
+
+  return !/<\/?[A-Za-z][\w.:-]*(?:\s[^<>]*?)?\/?>/.test(allowedHtmlRemoved)
 }
