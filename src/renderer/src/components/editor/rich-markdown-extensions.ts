@@ -1,4 +1,4 @@
-import type { AnyExtension, Editor } from '@tiptap/core'
+import { decodeHtmlEntities, type AnyExtension, type Editor } from '@tiptap/core'
 import StarterKit from '@tiptap/starter-kit'
 import Link from '@tiptap/extension-link'
 import Image from '@tiptap/extension-image'
@@ -134,7 +134,7 @@ const OrcaDetails = Details.extend({
         return undefined
       }
 
-      const summary = summaryMatch[1].trim()
+      const summary = decodeHtmlEntities(summaryMatch[1].trim())
       const body = detailsBlock.inner.slice((summaryMatch.index ?? 0) + summaryMatch[0].length)
 
       return {
@@ -170,7 +170,9 @@ const OrcaDetails = Details.extend({
   renderMarkdown: (node, helpers) => {
     const summary = node.content?.find((child) => child.type === 'detailsSummary')
     const content = node.content?.find((child) => child.type === 'detailsContent')
-    const summaryText = escapeDetailsHtml(helpers.renderChildren(summary?.content ?? [], ''))
+    const summaryText = escapeDetailsHtml(
+      decodeHtmlEntities(helpers.renderChildren(summary?.content ?? [], ''))
+    )
     const body = helpers.renderChildren(content?.content ?? [], '\n\n').trim()
     const attrs = renderDetailsAttributes(node.attrs)
 

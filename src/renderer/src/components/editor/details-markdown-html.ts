@@ -54,10 +54,6 @@ export function renderDetailsAttributes(attrs: Record<string, unknown> | undefin
   return attributes.join(' ')
 }
 
-export function isSupportedDetailsHtml(raw: string): boolean {
-  return /^<\/?(?:details|summary)\b/i.test(raw.trim())
-}
-
 export function matchDetailsHtmlBlock(content: string, start: number): DetailsHtmlBlock | null {
   const openingMatch = content.slice(start).match(/^<details\b[^>]*>/i)
   if (!openingMatch) {

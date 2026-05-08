@@ -82,6 +82,12 @@ describe('rich markdown round trip', () => {
     )
   })
 
+  it('does not double-escape entities in editable details summaries', () => {
+    expect(roundTripMarkdown('<details><summary>A &amp; B</summary><p>Body</p></details>\n')).toBe(
+      '<details class="orca-details">\n<summary>A &amp; B</summary>\n\nBody\n\n</details>'
+    )
+  })
+
   it('preserves heading-styled details blocks', () => {
     expect(
       roundTripMarkdown(
@@ -101,6 +107,11 @@ describe('rich markdown round trip', () => {
     const input =
       '<details><summary>Outer</summary><details><summary>Inner</summary><p>Body</p></details></details>\n'
     expect(roundTripMarkdown(input)).toBe(input.trimEnd())
+  })
+
+  it('preserves loose details and summary tags as passthrough html', () => {
+    expect(roundTripMarkdown('<summary>Loose</summary>\n')).toBe('<summary>Loose</summary>')
+    expect(roundTripMarkdown('<details>\n')).toBe('<details>')
   })
 
   it('inserts editable text toggles from slash commands', () => {

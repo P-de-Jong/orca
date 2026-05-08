@@ -1,9 +1,5 @@
 import { Node, mergeAttributes } from '@tiptap/core'
-import {
-  isEditableDetailsHtmlBlock,
-  isSupportedDetailsHtml,
-  matchDetailsHtmlBlock
-} from './details-markdown-html'
+import { isEditableDetailsHtmlBlock, matchDetailsHtmlBlock } from './details-markdown-html'
 import { getMarkdownDocLinkTarget } from './markdown-doc-links'
 
 const INLINE_PLACEHOLDER_PREFIX = '[[ORCA_RAW_HTML_INLINE:'
@@ -178,7 +174,7 @@ export function encodeRawMarkdownHtmlForRichEditor(content: string): string {
       }
 
       const blockHtml = matchBlockHtml(content, index)
-      if (blockHtml && !isSupportedDetailsHtml(blockHtml)) {
+      if (blockHtml) {
         result += createPlaceholder('block', blockHtml)
         index += blockHtml.length
         continue
@@ -187,7 +183,7 @@ export function encodeRawMarkdownHtmlForRichEditor(content: string): string {
 
     if (content[index] === '<' && !isEscaped(content, index)) {
       const inlineHtml = matchInlineHtml(content.slice(index))
-      if (inlineHtml && !isSupportedDetailsHtml(inlineHtml)) {
+      if (inlineHtml) {
         result += createPlaceholder('inline', inlineHtml)
         index += inlineHtml.length
         continue
