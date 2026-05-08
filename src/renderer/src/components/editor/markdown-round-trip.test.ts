@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { Editor } from '@tiptap/core'
 import { encodeRawMarkdownHtmlForRichEditor } from './raw-markdown-html'
 import { createRichMarkdownExtensions } from './rich-markdown-extensions'
+import type { SlashCommandId } from './rich-markdown-commands'
+import { slashCommands } from './rich-markdown-commands'
 
 function roundTripMarkdown(content: string): string {
   const editor = new Editor({
@@ -12,6 +14,27 @@ function roundTripMarkdown(content: string): string {
   })
 
   try {
+    return editor.getMarkdown().trimEnd()
+  } finally {
+    editor.destroy()
+  }
+}
+
+function slashCommandMarkdown(commandId: SlashCommandId): string {
+  const editor = new Editor({
+    element: null,
+    extensions: createRichMarkdownExtensions(),
+    content: '',
+    contentType: 'markdown'
+  })
+
+  try {
+    const command = slashCommands.find((item) => item.id === commandId)
+    if (!command) {
+      throw new Error(`Missing slash command: ${commandId}`)
+    }
+
+    command.run(editor)
     return editor.getMarkdown().trimEnd()
   } finally {
     editor.destroy()
@@ -30,6 +53,34 @@ describe('rich markdown round trip', () => {
   it('preserves block html and comments', () => {
     expect(roundTripMarkdown('<div>block</div>\n')).toBe('<div>block</div>')
     expect(roundTripMarkdown('<!-- comment -->\n')).toBe('<!-- comment -->')
+  })
+
+  it('preserves editable details blocks', () => {
+    expect(roundTripMarkdown('<details><summary>Toggle</summary><p>Body</p></details>\n')).toBe(
+      '<details class="orca-details">\n<summary>Toggle</summary>\n\nBody\n\n</details>'
+    )
+  })
+
+  it('preserves heading-styled details blocks', () => {
+    expect(
+      roundTripMarkdown(
+        '<details data-orca-toggle="heading-1"><summary>Toggle</summary><p>Body</p></details>\n'
+      )
+    ).toBe(
+      '<details class="orca-details" data-orca-toggle="heading-1">\n<summary>Toggle</summary>\n\nBody\n\n</details>'
+    )
+  })
+
+  it('inserts editable text toggles from slash commands', () => {
+    expect(slashCommandMarkdown('toggle-text')).toBe(
+      '<details class="orca-details" open>\n<summary>Toggle</summary>\n\n\n\n</details>'
+    )
+  })
+
+  it('inserts editable heading toggles from slash commands', () => {
+    expect(slashCommandMarkdown('toggle-h1')).toBe(
+      '<details class="orca-details" data-orca-toggle="heading-1" open>\n<summary>Toggle</summary>\n\n\n\n</details>'
+    )
   })
 
   it('preserves markdown tables', () => {

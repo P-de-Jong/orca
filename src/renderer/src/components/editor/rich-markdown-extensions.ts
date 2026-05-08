@@ -3,6 +3,7 @@ import StarterKit from '@tiptap/starter-kit'
 import Link from '@tiptap/extension-link'
 import Image from '@tiptap/extension-image'
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight'
+import { Details, DetailsContent, DetailsSummary } from '@tiptap/extension-details'
 import Placeholder from '@tiptap/extension-placeholder'
 import TaskList from '@tiptap/extension-task-list'
 import TaskItem from '@tiptap/extension-task-item'
@@ -14,6 +15,14 @@ import { Markdown } from '@tiptap/markdown'
 import { createLowlight, common } from 'lowlight'
 import { loadLocalImageSrc, onImageCacheInvalidated } from './useLocalImageSrc'
 import { RawMarkdownHtmlBlock, RawMarkdownHtmlInline } from './raw-markdown-html'
+import {
+  DETAILS_CLOSE_TAG,
+  detailsBodyHtmlToMarkdown,
+  escapeDetailsHtml,
+  parseDetailsAttributes,
+  renderDetailsAttributes,
+  type DetailsHtmlToken
+} from './details-markdown-html'
 import { MarkdownDocLink } from './rich-markdown-doc-link'
 import { RichMarkdownCodeBlock } from './RichMarkdownCodeBlock'
 import { safeReactNodeViewRenderer } from './safe-react-node-view-renderer'
@@ -22,6 +31,84 @@ import { DragSelectionGuard } from './drag-selection-guard'
 const lowlight = createLowlight(common)
 
 const RICH_MARKDOWN_PLACEHOLDER = 'Write markdown… Type / for blocks.'
+const OrcaDetails = Details.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      variant: {
+        default: null,
+        parseHTML: (element) =>
+          element.getAttribute('data-orca-toggle') === 'heading-1' ? 'heading-1' : null,
+        renderHTML: ({ variant }) =>
+          variant === 'heading-1' ? { 'data-orca-toggle': 'heading-1' } : {}
+      }
+    }
+  },
+  markdownTokenizer: {
+    name: 'details',
+    level: 'block',
+    start: '<details',
+    tokenize(src, _tokens, lexer) {
+      const openingMatch = src.match(/^<details\b([^>]*)>/i)
+      if (!openingMatch) {
+        return undefined
+      }
+
+      const closingIndex = src.toLowerCase().indexOf(DETAILS_CLOSE_TAG, openingMatch[0].length)
+      if (closingIndex === -1) {
+        return undefined
+      }
+
+      const raw = src.slice(0, closingIndex + DETAILS_CLOSE_TAG.length)
+      const inner = src.slice(openingMatch[0].length, closingIndex)
+      const summaryMatch = inner.match(/^\s*<summary\b[^>]*>([\s\S]*?)<\/summary>/i)
+      if (!summaryMatch) {
+        return undefined
+      }
+
+      const summary = summaryMatch[1].trim()
+      const body = inner.slice((summaryMatch.index ?? 0) + summaryMatch[0].length)
+
+      return {
+        type: 'details',
+        raw,
+        block: true,
+        attributes: parseDetailsAttributes(openingMatch[1] ?? ''),
+        summaryTokens: lexer.inlineTokens(summary),
+        bodyTokens: lexer.blockTokens(detailsBodyHtmlToMarkdown(body))
+      } as DetailsHtmlToken
+    }
+  },
+  parseMarkdown: (token, helpers) => {
+    const detailsToken = token as DetailsHtmlToken
+    if (detailsToken.type !== 'details') {
+      return []
+    }
+
+    const summary = helpers.createNode(
+      'detailsSummary',
+      {},
+      helpers.parseInline(detailsToken.summaryTokens ?? [])
+    )
+    const body = helpers.parseChildren(detailsToken.bodyTokens ?? [])
+    const content = helpers.createNode(
+      'detailsContent',
+      {},
+      body.length > 0 ? body : [helpers.createNode('paragraph')]
+    )
+
+    return helpers.createNode('details', detailsToken.attributes ?? {}, [summary, content])
+  },
+  renderMarkdown: (node, helpers) => {
+    const summary = node.content?.find((child) => child.type === 'detailsSummary')
+    const content = node.content?.find((child) => child.type === 'detailsContent')
+    const summaryText = escapeDetailsHtml(helpers.renderChildren(summary?.content ?? [], ''))
+    const body = helpers.renderChildren(content?.content ?? [], '\n\n').trim()
+    const attrs = renderDetailsAttributes(node.attrs)
+
+    return `<details ${attrs}>\n<summary>${summaryText}</summary>\n\n${body}\n\n</details>`
+  }
+})
 
 export function createRichMarkdownExtensions({
   includePlaceholder = false
@@ -126,6 +213,14 @@ export function createRichMarkdownExtensions({
     TaskItem.configure({
       nested: true
     }),
+    OrcaDetails.configure({
+      persist: true,
+      HTMLAttributes: {
+        class: 'orca-details'
+      }
+    }),
+    DetailsSummary,
+    DetailsContent,
     Table.configure({
       resizable: false
     }),

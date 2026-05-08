@@ -1,4 +1,5 @@
 import { Node, mergeAttributes } from '@tiptap/core'
+import { isSupportedDetailsHtml, matchSupportedDetailsHtmlBlock } from './details-markdown-html'
 import { getMarkdownDocLinkTarget } from './markdown-doc-links'
 
 const INLINE_PLACEHOLDER_PREFIX = '[[ORCA_RAW_HTML_INLINE:'
@@ -157,8 +158,17 @@ export function encodeRawMarkdownHtmlForRichEditor(content: string): string {
     }
 
     if (isLineStart) {
+      const detailsHtml = matchSupportedDetailsHtmlBlock(content, index)
+      if (detailsHtml) {
+        // Why: <details>/<summary> is an editable rich-mode node; raw passthrough
+        // would make toggle blocks reopen as inert HTML instead.
+        result += detailsHtml
+        index += detailsHtml.length
+        continue
+      }
+
       const blockHtml = matchBlockHtml(content, index)
-      if (blockHtml) {
+      if (blockHtml && !isSupportedDetailsHtml(blockHtml)) {
         result += createPlaceholder('block', blockHtml)
         index += blockHtml.length
         continue
@@ -167,7 +177,7 @@ export function encodeRawMarkdownHtmlForRichEditor(content: string): string {
 
     if (content[index] === '<' && !isEscaped(content, index)) {
       const inlineHtml = matchInlineHtml(content.slice(index))
-      if (inlineHtml) {
+      if (inlineHtml && !isSupportedDetailsHtml(inlineHtml)) {
         result += createPlaceholder('inline', inlineHtml)
         index += inlineHtml.length
         continue

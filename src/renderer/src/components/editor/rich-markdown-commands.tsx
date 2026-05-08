@@ -1,6 +1,15 @@
 import React from 'react'
 import type { Editor } from '@tiptap/react'
-import { Heading1, Heading2, Heading3, ImageIcon, List, ListOrdered, Quote } from 'lucide-react'
+import {
+  ChevronRight,
+  Heading1,
+  Heading2,
+  Heading3,
+  ImageIcon,
+  List,
+  ListOrdered,
+  Quote
+} from 'lucide-react'
 import type { MarkdownDocument } from '../../../../shared/types'
 import { stripMarkdownExtension } from './markdown-doc-links'
 
@@ -31,7 +40,9 @@ export type DocLinkMenuRow =
 
 export type SlashCommandId =
   | 'text'
+  | 'toggle-text'
   | 'heading-1'
+  | 'toggle-h1'
   | 'heading-2'
   | 'heading-3'
   | 'task-list'
@@ -49,6 +60,30 @@ export type SlashCommand = {
   icon: React.ComponentType<{ className?: string }>
   description: string
   run: (editor: Editor) => void
+}
+
+function insertToggle(editor: Editor, variant?: 'heading-1'): void {
+  editor
+    .chain()
+    .focus()
+    .insertContent({
+      type: 'details',
+      attrs: {
+        open: true,
+        ...(variant ? { variant } : {})
+      },
+      content: [
+        {
+          type: 'detailsSummary',
+          content: [{ type: 'text', text: 'Toggle' }]
+        },
+        {
+          type: 'detailsContent',
+          content: [{ type: 'paragraph' }]
+        }
+      ]
+    })
+    .run()
 }
 
 /**
@@ -84,6 +119,16 @@ export const slashCommands: SlashCommand[] = [
     }
   },
   {
+    id: 'toggle-text',
+    label: 'Toggle Text',
+    aliases: ['toggle', 'details', 'collapse', 'toggle-text'],
+    icon: ChevronRight,
+    description: 'Create a collapsible text section.',
+    run: (editor) => {
+      insertToggle(editor)
+    }
+  },
+  {
     id: 'heading-1',
     label: 'Heading 1',
     aliases: ['h1', 'title'],
@@ -93,6 +138,16 @@ export const slashCommands: SlashCommand[] = [
       // Use setHeading (not toggleHeading) so the slash command is idempotent —
       // invoking "/h1" on an existing H1 should keep it as H1, not revert to paragraph.
       editor.chain().focus().setHeading({ level: 1 }).run()
+    }
+  },
+  {
+    id: 'toggle-h1',
+    label: 'Toggle Heading 1',
+    aliases: ['toggle-h1', 'toggle heading', 'details heading', 'collapse heading'],
+    icon: ChevronRight,
+    description: 'Create a collapsible section with a large heading summary.',
+    run: (editor) => {
+      insertToggle(editor, 'heading-1')
     }
   },
   {
