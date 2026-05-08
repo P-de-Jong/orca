@@ -213,6 +213,11 @@ export function buildPtyHostEnv(
   // back to a fresh UUID per spawn; that would discard user Pi state on
   // every daemon reconnect.
   Object.assign(baseEnv, piTitlebarExtensionService.buildPtyEnv(id, preexistingPiAgentDir))
+  if (baseEnv.PI_CODING_AGENT_DIR) {
+    // Why: ~/.zshrc can re-export the user's default after spawn; shell-ready
+    // wrappers restore this PTY-scoped value after user startup files run.
+    baseEnv.ORCA_PI_CODING_AGENT_DIR = baseEnv.PI_CODING_AGENT_DIR
+  }
 
   // Why: Codex account switching now materializes auth into one shared
   // runtime home (~/.codex), and Codex launched inside Orca terminals must

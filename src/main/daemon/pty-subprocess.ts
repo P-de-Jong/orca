@@ -161,7 +161,9 @@ export function createPtySubprocess(opts: PtySubprocessOptions): SubprocessHandl
   } else {
     const shellLaunch = opts.command
       ? getShellReadyLaunchConfig(shellPath)
-      : env.ORCA_ATTRIBUTION_SHIM_DIR || env.ORCA_OPENCODE_CONFIG_DIR
+      : env.ORCA_ATTRIBUTION_SHIM_DIR ||
+          env.ORCA_OPENCODE_CONFIG_DIR ||
+          env.ORCA_PI_CODING_AGENT_DIR
         ? getAttributionShellLaunchConfig(shellPath)
         : null
     if (shellLaunch) {

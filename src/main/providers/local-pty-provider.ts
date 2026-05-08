@@ -251,7 +251,9 @@ export class LocalPtyProvider implements IPtyProvider {
     if (!wslInfo && process.platform !== 'win32') {
       const shellLaunch = args.command
         ? getShellReadyLaunchConfig(shellPath)
-        : finalEnv.ORCA_ATTRIBUTION_SHIM_DIR || finalEnv.ORCA_OPENCODE_CONFIG_DIR
+        : finalEnv.ORCA_ATTRIBUTION_SHIM_DIR ||
+            finalEnv.ORCA_OPENCODE_CONFIG_DIR ||
+            finalEnv.ORCA_PI_CODING_AGENT_DIR
           ? getAttributionShellLaunchConfig(shellPath)
           : null
       if (shellLaunch) {
