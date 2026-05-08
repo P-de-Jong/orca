@@ -231,6 +231,27 @@ describe('createPtySubprocess', () => {
     expect(lastCall[2].env.ORCA_SHELL_READY_MARKER).toBe('0')
   })
 
+  it('uses shell wrapper when OpenCode config must survive shell startup', () => {
+    const proc = mockPtyProcess()
+    spawnMock.mockReturnValue(proc)
+
+    createPtySubprocess({
+      sessionId: 'test',
+      cols: 80,
+      rows: 24,
+      env: {
+        SHELL: '/bin/zsh',
+        OPENCODE_CONFIG_DIR: '/tmp/orca-opencode-overlay',
+        ORCA_OPENCODE_CONFIG_DIR: '/tmp/orca-opencode-overlay'
+      }
+    })
+
+    const lastCall = spawnMock.mock.calls.at(-1)!
+    expect(lastCall[1]).toEqual(['-l'])
+    expect(lastCall[2].env.ZDOTDIR).toContain('shell-ready/zsh')
+    expect(lastCall[2].env.ORCA_SHELL_READY_MARKER).toBe('0')
+  })
+
   it('combines HOMEDRIVE and HOMEPATH for Windows default cwd', () => {
     const proc = mockPtyProcess()
     spawnMock.mockReturnValue(proc)

@@ -234,6 +234,22 @@ describePosix('local PTY shell-ready launch config', () => {
     expect(zshenv).toContain('*/shell-ready/zsh) export ORCA_ORIG_ZDOTDIR="$HOME" ;;')
   })
 
+  it('writes wrappers that restore OpenCode config after user startup files', async () => {
+    const { getBashShellReadyRcfileContent, getShellReadyLaunchConfig } =
+      await importFreshLocalPtyShellReady()
+
+    getShellReadyLaunchConfig('/bin/zsh')
+
+    const zshrc = readFileSync(join(userDataPath, 'shell-ready', 'zsh', '.zshrc'), 'utf8')
+    const zlogin = readFileSync(join(userDataPath, 'shell-ready', 'zsh', '.zlogin'), 'utf8')
+    const bashRc = getBashShellReadyRcfileContent()
+    const restoreLine =
+      '[[ -n "${ORCA_OPENCODE_CONFIG_DIR:-}" ]] && export OPENCODE_CONFIG_DIR="${ORCA_OPENCODE_CONFIG_DIR}"'
+    expect(zshrc).toContain(restoreLine)
+    expect(zlogin).toContain(restoreLine)
+    expect(bashRc).toContain(restoreLine)
+  })
+
   it('preserves a real inherited ZDOTDIR as ORCA_ORIG_ZDOTDIR', async () => {
     const previousZdotdir = process.env.ZDOTDIR
     process.env.ZDOTDIR = '/Users/alice/.config/zsh'

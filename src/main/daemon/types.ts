@@ -1,11 +1,10 @@
 // ─── Protocol Version ────────────────────────────────────────────────
 // Why: daemons can survive app updates with long-lived shell env. Bump when
 // spawn-time env semantics change so stale sessions cannot bypass new behavior.
-// Why: bumped from 3 → 4 for the getSnapshot RPC. A surviving v3 daemon
-// would reject getSnapshot as unknown, silently failing all checkpoint
-// writes. The bump forces a stale daemon to be replaced on reconnect.
-export const PROTOCOL_VERSION = 4
-export const PREVIOUS_DAEMON_PROTOCOL_VERSIONS = [1, 2, 3] as const
+// Why: bumped from 4 → 5 for OpenCode config overlay env restoration. A
+// surviving v4 daemon keeps emitting stale shell-ready wrappers.
+export const PROTOCOL_VERSION = 5
+export const PREVIOUS_DAEMON_PROTOCOL_VERSIONS = [1, 2, 3, 4] as const
 
 // ─── Session State Machine ──────────────────────────────────────────
 export type SessionState = 'created' | 'spawning' | 'running' | 'exiting' | 'exited'
