@@ -1,3 +1,6 @@
+/* eslint-disable max-lines -- Why: shell-ready wrapper coverage keeps zsh,
+   bash, marker scanning, and env restoration cases in one suite so the
+   generated wrapper contract is reviewed as a unit. */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { tmpdir } from 'os'
 import { join } from 'path'
@@ -128,13 +131,21 @@ const describePosix = process.platform === 'win32' ? describe.skip : describe
 
 describePosix('local PTY shell-ready launch config', () => {
   let userDataPath: string
+  let previousOrcaOrigZdotdir: string | undefined
 
   beforeEach(() => {
+    previousOrcaOrigZdotdir = process.env.ORCA_ORIG_ZDOTDIR
+    delete process.env.ORCA_ORIG_ZDOTDIR
     userDataPath = mkdtempSync(join(tmpdir(), 'local-pty-shell-ready-test-'))
     getUserDataPathMock.mockReturnValue(userDataPath)
   })
 
   afterEach(() => {
+    if (previousOrcaOrigZdotdir === undefined) {
+      delete process.env.ORCA_ORIG_ZDOTDIR
+    } else {
+      process.env.ORCA_ORIG_ZDOTDIR = previousOrcaOrigZdotdir
+    }
     rmSync(userDataPath, { recursive: true, force: true })
     vi.restoreAllMocks()
   })

@@ -20,6 +20,12 @@ describe('resolveWindowsShellLaunchArgs', () => {
     // The actual command must dot-source $PROFILE before setting encodings,
     // otherwise oh-my-posh / starship / PSReadLine never load.
     expect(result.shellArgs[2]).toContain('. $PROFILE')
+    expect(result.shellArgs[2]).toContain(
+      '$env:OPENCODE_CONFIG_DIR = $env:ORCA_OPENCODE_CONFIG_DIR'
+    )
+    expect(result.shellArgs[2]).toContain(
+      '$env:PI_CODING_AGENT_DIR = $env:ORCA_PI_CODING_AGENT_DIR'
+    )
     expect(result.shellArgs[2]).toContain('UTF8')
   })
 

@@ -115,6 +115,10 @@ import {
   unregisterSshPtyProvider
 } from './pty'
 
+const POWERSHELL_PROFILE_COMMAND = expect.stringMatching(
+  /ORCA_OPENCODE_CONFIG_DIR[\s\S]*ORCA_PI_CODING_AGENT_DIR[\s\S]*UTF8/
+)
+
 function makeDisposable() {
   return { dispose: vi.fn() }
 }
@@ -946,11 +950,7 @@ describe('registerPtyHandlers', () => {
 
       expect(spawnMock).toHaveBeenCalledWith(
         'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
-        [
-          '-NoExit',
-          '-Command',
-          'try { . $PROFILE } catch {}; [Console]::OutputEncoding = [System.Text.Encoding]::UTF8; [Console]::InputEncoding = [System.Text.Encoding]::UTF8'
-        ],
+        ['-NoExit', '-Command', POWERSHELL_PROFILE_COMMAND],
         expect.any(Object)
       )
     })
@@ -963,11 +963,7 @@ describe('registerPtyHandlers', () => {
 
       expect(spawnMock).toHaveBeenCalledWith(
         'C:\\Program Files\\PowerShell\\7\\pwsh.exe',
-        [
-          '-NoExit',
-          '-Command',
-          'try { . $PROFILE } catch {}; [Console]::OutputEncoding = [System.Text.Encoding]::UTF8; [Console]::InputEncoding = [System.Text.Encoding]::UTF8'
-        ],
+        ['-NoExit', '-Command', POWERSHELL_PROFILE_COMMAND],
         expect.any(Object)
       )
     })
@@ -1026,11 +1022,7 @@ describe('registerPtyHandlers', () => {
 
       expect(spawnMock).toHaveBeenCalledWith(
         'powershell.exe',
-        [
-          '-NoExit',
-          '-Command',
-          'try { . $PROFILE } catch {}; [Console]::OutputEncoding = [System.Text.Encoding]::UTF8; [Console]::InputEncoding = [System.Text.Encoding]::UTF8'
-        ],
+        ['-NoExit', '-Command', POWERSHELL_PROFILE_COMMAND],
         expect.any(Object)
       )
     })
@@ -1052,11 +1044,7 @@ describe('registerPtyHandlers', () => {
 
       expect(spawnMock).toHaveBeenCalledWith(
         'powershell.exe',
-        [
-          '-NoExit',
-          '-Command',
-          'try { . $PROFILE } catch {}; [Console]::OutputEncoding = [System.Text.Encoding]::UTF8; [Console]::InputEncoding = [System.Text.Encoding]::UTF8'
-        ],
+        ['-NoExit', '-Command', POWERSHELL_PROFILE_COMMAND],
         expect.any(Object)
       )
     })
@@ -1079,11 +1067,7 @@ describe('registerPtyHandlers', () => {
 
       expect(spawnMock).toHaveBeenCalledWith(
         'pwsh.exe',
-        [
-          '-NoExit',
-          '-Command',
-          'try { . $PROFILE } catch {}; [Console]::OutputEncoding = [System.Text.Encoding]::UTF8; [Console]::InputEncoding = [System.Text.Encoding]::UTF8'
-        ],
+        ['-NoExit', '-Command', POWERSHELL_PROFILE_COMMAND],
         expect.any(Object)
       )
     })
@@ -1106,11 +1090,7 @@ describe('registerPtyHandlers', () => {
 
       expect(spawnMock).toHaveBeenCalledWith(
         'powershell.exe',
-        [
-          '-NoExit',
-          '-Command',
-          'try { . $PROFILE } catch {}; [Console]::OutputEncoding = [System.Text.Encoding]::UTF8; [Console]::InputEncoding = [System.Text.Encoding]::UTF8'
-        ],
+        ['-NoExit', '-Command', POWERSHELL_PROFILE_COMMAND],
         expect.any(Object)
       )
     })
@@ -1133,11 +1113,7 @@ describe('registerPtyHandlers', () => {
 
       expect(spawnMock).toHaveBeenCalledWith(
         'powershell.exe',
-        [
-          '-NoExit',
-          '-Command',
-          'try { . $PROFILE } catch {}; [Console]::OutputEncoding = [System.Text.Encoding]::UTF8; [Console]::InputEncoding = [System.Text.Encoding]::UTF8'
-        ],
+        ['-NoExit', '-Command', POWERSHELL_PROFILE_COMMAND],
         expect.any(Object)
       )
     })
@@ -1503,7 +1479,14 @@ describe('registerPtyHandlers', () => {
       expect(spawnMock).toHaveBeenCalledWith(
         '/bin/zsh',
         ['-l'],
-        expect.objectContaining({ cwd: '/tmp' })
+        expect.objectContaining({
+          cwd: '/tmp',
+          env: expect.objectContaining({
+            ORCA_OPENCODE_CONFIG_DIR: '/tmp/orca-opencode-config',
+            ORCA_SHELL_READY_MARKER: '0',
+            ZDOTDIR: '/tmp/orca-user-data/shell-ready/zsh'
+          })
+        })
       )
       expect(warnSpy).toHaveBeenCalledWith(
         expect.stringContaining('Shell "/opt/homebrew/bin/bash" is not executable')
@@ -1543,7 +1526,12 @@ describe('registerPtyHandlers', () => {
         ['-l'],
         expect.objectContaining({
           cwd: '/tmp',
-          env: expect.objectContaining({ SHELL: '/bin/zsh' })
+          env: expect.objectContaining({
+            SHELL: '/bin/zsh',
+            ORCA_OPENCODE_CONFIG_DIR: '/tmp/orca-opencode-config',
+            ORCA_SHELL_READY_MARKER: '0',
+            ZDOTDIR: '/tmp/orca-user-data/shell-ready/zsh'
+          })
         })
       )
       expect(warnSpy).toHaveBeenCalledWith(
