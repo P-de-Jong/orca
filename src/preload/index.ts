@@ -26,7 +26,9 @@ import type {
   NotificationSoundPathResult,
   NotificationSoundResult,
   OnboardingState,
-  SearchResult
+  SearchResult,
+  WorktreeBaseStatusEvent,
+  WorktreeRemoteBranchConflictEvent
 } from '../shared/types'
 import type { RuntimeStatus, RuntimeSyncWindowGraph } from '../shared/runtime-types'
 import type { RateLimitState } from '../shared/rate-limit-types'
@@ -58,6 +60,10 @@ import type {
   UpdatePullRequestBySlugArgs,
   UpdateProjectItemFieldArgs
 } from '../shared/github-project-types'
+import {
+  richMarkdownContextMenuCommandChannel,
+  type RichMarkdownContextMenuCommandPayload
+} from '../shared/rich-markdown-context-menu'
 import type {
   SshConnectionState,
   SshTarget,
@@ -66,6 +72,7 @@ import type {
 } from '../shared/ssh-types'
 import type { AgentStatusState } from '../shared/agent-status-types'
 import type { TelemetryConsentState } from '../shared/telemetry-consent-types'
+import type { RefreshAgentsResult } from './api-types'
 import type { AgentKind, LaunchSource, RequestKind } from '../shared/telemetry-events'
 import {
   ORCA_EDITOR_SAVE_DIRTY_FILES_EVENT,
@@ -246,7 +253,9 @@ const api = {
     // src/renderer/src/lib/keyboard-layout/input-source-id.ts, issue #1205).
     // Returns null on non-Darwin or when the defaults read fails.
     getKeyboardInputSourceId: (): Promise<string | null> =>
-      ipcRenderer.invoke('app:getKeyboardInputSourceId')
+      ipcRenderer.invoke('app:getKeyboardInputSourceId'),
+    setUnreadDockBadgeCount: (count: number): Promise<void> =>
+      ipcRenderer.invoke('app:setUnreadDockBadgeCount', count)
   },
 
   wsl: {
@@ -372,6 +381,24 @@ const api = {
         callback(data)
       ipcRenderer.on('worktrees:changed', listener)
       return () => ipcRenderer.removeListener('worktrees:changed', listener)
+    },
+
+    onBaseStatus: (callback: (data: WorktreeBaseStatusEvent) => void): (() => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, data: WorktreeBaseStatusEvent) =>
+        callback(data)
+      ipcRenderer.on('worktree:baseStatus', listener)
+      return () => ipcRenderer.removeListener('worktree:baseStatus', listener)
+    },
+
+    onRemoteBranchConflict: (
+      callback: (data: WorktreeRemoteBranchConflictEvent) => void
+    ): (() => void) => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        data: WorktreeRemoteBranchConflictEvent
+      ) => callback(data)
+      ipcRenderer.on('worktree:remoteBranchConflict', listener)
+      return () => ipcRenderer.removeListener('worktree:remoteBranchConflict', listener)
     }
   },
 
@@ -651,6 +678,7 @@ const api = {
       repoPath: string
       number: number
       body: string
+      type?: 'issue' | 'pr'
     }): Promise<GitHubCommentResult> => ipcRenderer.invoke('gh:addIssueComment', args),
 
     addPRReviewCommentReply: (args: {
@@ -678,6 +706,21 @@ const api = {
 
     listAssignableUsers: (args: { repoPath: string }): Promise<GitHubAssignableUser[]> =>
       ipcRenderer.invoke('gh:listAssignableUsers', args),
+
+    // Why: every renderer subscribes to local mutation broadcasts so each
+    // window's work-item-details cache invalidates the affected entry. The
+    // event fires after a successful mutation in any window — see
+    // src/main/ipc/github.ts broadcastWorkItemMutated.
+    onWorkItemMutated: (
+      callback: (payload: { repoPath: string; type: 'issue' | 'pr'; number: number }) => void
+    ): (() => void) => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        payload: { repoPath: string; type: 'issue' | 'pr'; number: number }
+      ): void => callback(payload)
+      ipcRenderer.on('gh:workItemMutated', listener)
+      return () => ipcRenderer.removeListener('gh:workItemMutated', listener)
+    },
 
     checkOrcaStarred: (): Promise<boolean | null> => ipcRenderer.invoke('gh:checkOrcaStarred'),
     starOrca: (): Promise<boolean> => ipcRenderer.invoke('gh:starOrca'),
@@ -899,11 +942,8 @@ const api = {
       linear: { connected: boolean }
     }> => ipcRenderer.invoke('preflight:check', args),
     detectAgents: (): Promise<string[]> => ipcRenderer.invoke('preflight:detectAgents'),
-    refreshAgents: (): Promise<{
-      agents: string[]
-      addedPathSegments: string[]
-      shellHydrationOk: boolean
-    }> => ipcRenderer.invoke('preflight:refreshAgents'),
+    refreshAgents: (): Promise<RefreshAgentsResult> =>
+      ipcRenderer.invoke('preflight:refreshAgents'),
     detectRemoteAgents: (args: { connectionId: string }): Promise<string[]> =>
       ipcRenderer.invoke('preflight:detectRemoteAgents', args)
   },
@@ -1922,6 +1962,16 @@ const api = {
     setMarkdownEditorFocused: (focused: boolean): void => {
       ipcRenderer.send('ui:setMarkdownEditorFocused', focused)
     },
+    onRichMarkdownContextCommand: (
+      callback: (payload: RichMarkdownContextMenuCommandPayload) => void
+    ): (() => void) => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        payload: RichMarkdownContextMenuCommandPayload
+      ) => callback(payload)
+      ipcRenderer.on(richMarkdownContextMenuCommandChannel, listener)
+      return () => ipcRenderer.removeListener(richMarkdownContextMenuCommandChannel, listener)
+    },
     onFullscreenChanged: (callback: (isFullScreen: boolean) => void): (() => void) => {
       const listener = (_event: Electron.IpcRendererEvent, isFullScreen: boolean) =>
         callback(isFullScreen)
@@ -1936,6 +1986,10 @@ const api = {
     maximize: (): void => {
       ipcRenderer.send('window:maximize')
     },
+    /** Windows only: read the current maximize state on mount, since
+     *  window:maximize-changed only fires on transitions and a window that
+     *  starts maximized would otherwise show the wrong icon. */
+    isMaximized: (): Promise<boolean> => ipcRenderer.invoke('window:isMaximized'),
     /** Windows only: subscribe to maximize state changes so the renderer-drawn
      *  maximize button can show the correct restore/maximize icon. */
     onMaximizeChanged: (callback: (isMaximized: boolean) => void): (() => void) => {
@@ -2219,6 +2273,7 @@ const api = {
 
     getPairingQR: (args?: {
       address?: string
+      rotate?: boolean
     }): Promise<
       | { available: false }
       | {

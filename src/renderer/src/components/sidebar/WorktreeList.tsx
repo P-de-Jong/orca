@@ -18,7 +18,8 @@ import { isGitRepoKind } from '../../../../shared/repo-kind'
 import {
   buildExplicitEntriesByTabId,
   buildWorktreeComparator,
-  computeSmartScore
+  computeSmartScore,
+  hasAnyLivePty
 } from './smart-sort'
 import {
   type GroupHeaderRow,
@@ -384,7 +385,7 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
                   role="button"
                   tabIndex={0}
                   className={cn(
-                    'group flex h-7 w-full items-center gap-1.5 px-1.5 text-left transition-all cursor-pointer',
+                    'group flex h-7 w-full items-center gap-1.5 pl-3 pr-1 text-left transition-all cursor-pointer',
                     // First header sits directly under SidebarHeader, which already
                     // supplies its own spacing — only offset secondary group headers.
                     vItem.index !== firstHeaderIndex && 'mt-2',
@@ -402,11 +403,10 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
                     <div
                       className={cn(
                         'flex size-4 shrink-0 items-center justify-center rounded-[4px]',
-                        row.repo ? 'text-foreground' : ''
+                        row.repo && 'text-muted-foreground'
                       )}
-                      style={row.repo ? { color: row.repo.badgeColor } : undefined}
                     >
-                      <row.icon className="size-3" />
+                      <row.icon className="size-3.5" />
                     </div>
                   ) : null}
 
@@ -421,6 +421,15 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
                     </div>
                   </div>
 
+                  <div className="flex size-4 shrink-0 items-center justify-center text-muted-foreground/60 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <ChevronDown
+                      className={cn(
+                        'size-3.5 transition-transform',
+                        collapsedGroups.has(row.key) && '-rotate-90'
+                      )}
+                    />
+                  </div>
+
                   {row.repo ? (
                     <Tooltip>
                       <TooltipTrigger asChild>
@@ -428,7 +437,7 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
                           type="button"
                           variant="ghost"
                           size="icon-xs"
-                          className="mr-0.5 size-5 shrink-0 rounded-md text-muted-foreground hover:bg-accent/70 hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+                          className="size-5 shrink-0 rounded-md text-muted-foreground hover:bg-accent/70 hover:text-foreground transition-opacity"
                           aria-label={`Create worktree for ${row.label}`}
                           onClick={(event) => {
                             event.preventDefault()
@@ -449,15 +458,6 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
                       </TooltipContent>
                     </Tooltip>
                   ) : null}
-
-                  <div className="flex size-4 shrink-0 items-center justify-center text-muted-foreground/60 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <ChevronDown
-                      className={cn(
-                        'size-3.5 transition-transform',
-                        collapsedGroups.has(row.key) && '-rotate-90'
-                      )}
-                    />
-                  </div>
                 </div>
               </div>
             )
@@ -512,6 +512,7 @@ const WorktreeList = React.memo(function WorktreeList() {
   // Read tabsByWorktree when needed for filtering or sorting
   const needsTabs = showActiveOnly || sortBy === 'smart'
   const tabsByWorktree = useAppStore((s) => (needsTabs ? s.tabsByWorktree : null))
+  const ptyIdsByTabId = useAppStore((s) => (needsTabs ? s.ptyIdsByTabId : null))
   const browserTabsByWorktree = useAppStore((s) =>
     showActiveOnly ? s.browserTabsByWorktree : null
   )
@@ -602,10 +603,7 @@ const WorktreeList = React.memo(function WorktreeList() {
     // Instead, restore the pre-shutdown order from the persisted sortOrder
     // snapshot, and switch to the live smart score once PTYs start spawning.
     if (sortBy === 'smart' && !sessionHasHadPty.current) {
-      const hasAnyLivePty = Object.values(state.tabsByWorktree)
-        .flat()
-        .some((t) => t.ptyId)
-      if (hasAnyLivePty) {
+      if (hasAnyLivePty(state.tabsByWorktree, state.ptyIdsByTabId)) {
         sessionHasHadPty.current = true
       } else {
         nonArchivedWorktrees.sort(
@@ -643,7 +641,8 @@ const WorktreeList = React.memo(function WorktreeList() {
                 state.prCache,
                 now,
                 state.agentStatusByPaneKey,
-                explicitByTabId
+                explicitByTabId,
+                state.ptyIdsByTabId
               )
             ])
           )
@@ -658,7 +657,8 @@ const WorktreeList = React.memo(function WorktreeList() {
         null,
         state.agentStatusByPaneKey,
         precomputedScores,
-        explicitByTabId
+        explicitByTabId,
+        state.ptyIdsByTabId
       )
     )
     return nonArchivedWorktrees.map((w) => w.id)
@@ -685,6 +685,7 @@ const WorktreeList = React.memo(function WorktreeList() {
       filterRepoIds,
       showActiveOnly,
       tabsByWorktree,
+      ptyIdsByTabId,
       browserTabsByWorktree,
       activeWorktreeId,
       hideDefaultBranchWorkspace,
@@ -698,6 +699,7 @@ const WorktreeList = React.memo(function WorktreeList() {
     hideDefaultBranchWorkspace,
     repoMap,
     tabsByWorktree,
+    ptyIdsByTabId,
     browserTabsByWorktree,
     sortedIds,
     worktreeMap,
