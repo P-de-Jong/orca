@@ -252,6 +252,8 @@ export class LocalPtyProvider implements IPtyProvider {
 
     const finalEnv = this.opts.buildSpawnEnv ? this.opts.buildSpawnEnv(id, spawnEnv) : spawnEnv
     if (!wslInfo && process.platform !== 'win32') {
+      // Why: any Orca-injected overlay env that user rc files can clobber
+      // needs the wrapper so the post-rc restore line runs.
       const needsNoMarkerWrapper =
         finalEnv.ORCA_ATTRIBUTION_SHIM_DIR ||
         finalEnv.ORCA_OPENCODE_CONFIG_DIR ||

@@ -159,6 +159,8 @@ export function createPtySubprocess(opts: PtySubprocessOptions): SubprocessHandl
     shellArgs = resolved.shellArgs
     spawnCwd = resolved.effectiveCwd
   } else {
+    // Why: any Orca-injected overlay env that user rc files can clobber
+    // needs the wrapper so the post-rc restore line runs.
     const shellLaunch = opts.command
       ? getShellReadyLaunchConfig(shellPath)
       : env.ORCA_ATTRIBUTION_SHIM_DIR ||

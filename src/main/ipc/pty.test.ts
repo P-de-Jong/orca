@@ -116,7 +116,7 @@ import {
 } from './pty'
 
 const POWERSHELL_PROFILE_COMMAND = expect.stringMatching(
-  /ORCA_OPENCODE_CONFIG_DIR[\s\S]*ORCA_PI_CODING_AGENT_DIR[\s\S]*UTF8/
+  /\. \$PROFILE[\s\S]*ORCA_OPENCODE_CONFIG_DIR[\s\S]*ORCA_PI_CODING_AGENT_DIR[\s\S]*UTF8/
 )
 
 function makeDisposable() {
