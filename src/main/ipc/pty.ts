@@ -35,6 +35,7 @@ import {
   launchSourceSchema,
   requestKindSchema
 } from '../../shared/telemetry-events'
+import { readShellStartupEnvVar } from '../pty/shell-startup-env'
 
 // ─── Provider Registry ──────────────────────────────────────────────
 // Routes PTY operations by connectionId. null = local provider.
@@ -182,8 +183,17 @@ export function buildPtyHostEnv(
   // in lock-step across spawn paths without pushing process.env onto the
   // IPC wire unnecessarily.
   const preexistingOpenCodeConfigDir =
-    baseEnv.OPENCODE_CONFIG_DIR ?? process.env.OPENCODE_CONFIG_DIR
-  const preexistingPiAgentDir = baseEnv.PI_CODING_AGENT_DIR ?? process.env.PI_CODING_AGENT_DIR
+    baseEnv.ORCA_OPENCODE_SOURCE_CONFIG_DIR ??
+    process.env.ORCA_OPENCODE_SOURCE_CONFIG_DIR ??
+    baseEnv.OPENCODE_CONFIG_DIR ??
+    process.env.OPENCODE_CONFIG_DIR ??
+    readShellStartupEnvVar('OPENCODE_CONFIG_DIR', baseEnv.HOME ?? process.env.HOME)
+  const preexistingPiAgentDir =
+    baseEnv.ORCA_PI_SOURCE_AGENT_DIR ??
+    process.env.ORCA_PI_SOURCE_AGENT_DIR ??
+    baseEnv.PI_CODING_AGENT_DIR ??
+    process.env.PI_CODING_AGENT_DIR ??
+    readShellStartupEnvVar('PI_CODING_AGENT_DIR', baseEnv.HOME ?? process.env.HOME)
 
   // Why: OPENCODE_CONFIG_DIR is a singular path, not a colon-list, so a user
   // value cannot coexist with an Orca-only injection. Hand the user's value
@@ -196,6 +206,12 @@ export function buildPtyHostEnv(
     // Why: ~/.zshrc can re-export the user's default after spawn; shell-ready
     // wrappers restore this PTY-scoped value after user startup files run.
     baseEnv.ORCA_OPENCODE_CONFIG_DIR = baseEnv.OPENCODE_CONFIG_DIR
+    if (preexistingOpenCodeConfigDir) {
+      // Why: terminals launched from another Orca terminal inherit the overlay
+      // as OPENCODE_CONFIG_DIR; keep the original source so overlays do not
+      // mirror overlays and drop the user's real config.
+      baseEnv.ORCA_OPENCODE_SOURCE_CONFIG_DIR = preexistingOpenCodeConfigDir
+    }
   }
 
   // Why: Claude/Codex native hooks run inside the shell process, so Orca
@@ -217,6 +233,11 @@ export function buildPtyHostEnv(
     // Why: ~/.zshrc can re-export the user's default after spawn; shell-ready
     // wrappers restore this PTY-scoped value after user startup files run.
     baseEnv.ORCA_PI_CODING_AGENT_DIR = baseEnv.PI_CODING_AGENT_DIR
+    if (preexistingPiAgentDir) {
+      // Why: preserve the original Pi root across nested Orca terminals; the
+      // public env var is intentionally restored to the current PTY overlay.
+      baseEnv.ORCA_PI_SOURCE_AGENT_DIR = preexistingPiAgentDir
+    }
   }
 
   // Why: Codex account switching now materializes auth into one shared

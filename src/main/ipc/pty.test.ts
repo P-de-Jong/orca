@@ -12,6 +12,7 @@ const {
   statSyncMock,
   accessSyncMock,
   mkdirSyncMock,
+  readFileSyncMock,
   writeFileSyncMock,
   chmodSyncMock,
   getPathMock,
@@ -33,6 +34,7 @@ const {
   statSyncMock: vi.fn(),
   accessSyncMock: vi.fn(),
   mkdirSyncMock: vi.fn(),
+  readFileSyncMock: vi.fn(),
   writeFileSyncMock: vi.fn(),
   chmodSyncMock: vi.fn(),
   getPathMock: vi.fn(),
@@ -65,6 +67,7 @@ vi.mock('fs', () => ({
   statSync: statSyncMock,
   accessSync: accessSyncMock,
   mkdirSync: mkdirSyncMock,
+  readFileSync: readFileSyncMock,
   writeFileSync: writeFileSyncMock,
   chmodSync: chmodSyncMock,
   constants: {
@@ -138,7 +141,9 @@ describe('registerPtyHandlers', () => {
 
   beforeEach(() => {
     delete process.env.OPENCODE_CONFIG_DIR
+    delete process.env.ORCA_OPENCODE_SOURCE_CONFIG_DIR
     delete process.env.PI_CODING_AGENT_DIR
+    delete process.env.ORCA_PI_SOURCE_AGENT_DIR
     handlers.clear()
     handleMock.mockReset()
     onMock.mockReset()
@@ -148,6 +153,7 @@ describe('registerPtyHandlers', () => {
     statSyncMock.mockReset()
     accessSyncMock.mockReset()
     mkdirSyncMock.mockReset()
+    readFileSyncMock.mockReset()
     writeFileSyncMock.mockReset()
     chmodSyncMock.mockReset()
     getPathMock.mockReset()
@@ -169,6 +175,7 @@ describe('registerPtyHandlers', () => {
     getPathMock.mockReturnValue('/tmp/orca-user-data')
     existsSyncMock.mockReturnValue(true)
     statSyncMock.mockReturnValue({ isDirectory: () => true, mode: 0o755 })
+    readFileSyncMock.mockReturnValue('')
     openCodeBuildPtyEnvMock.mockImplementation((_ptyId: string, existingConfigDir?: string) => ({
       ORCA_OPENCODE_HOOK_PORT: '4567',
       ORCA_OPENCODE_HOOK_TOKEN: 'opencode-token',
@@ -359,11 +366,77 @@ describe('registerPtyHandlers', () => {
       expect(env.ORCA_OPENCODE_CONFIG_DIR).toBe(env.OPENCODE_CONFIG_DIR)
     })
 
+    it('mirrors the original OpenCode source dir when launched from an Orca overlay shell', async () => {
+      const env = await spawnAndGetEnv({
+        OPENCODE_CONFIG_DIR: '/tmp/parent-orca-opencode-overlay',
+        ORCA_OPENCODE_SOURCE_CONFIG_DIR: '/tmp/user-opencode-config'
+      })
+      expect(openCodeBuildPtyEnvMock).toHaveBeenCalledWith(
+        expect.any(String),
+        '/tmp/user-opencode-config'
+      )
+      expect(env.OPENCODE_CONFIG_DIR).toBe('/tmp/orca-opencode-overlay')
+      expect(env.ORCA_OPENCODE_CONFIG_DIR).toBe('/tmp/orca-opencode-overlay')
+      expect(env.ORCA_OPENCODE_SOURCE_CONFIG_DIR).toBe('/tmp/user-opencode-config')
+    })
+
+    it('mirrors OpenCode config exported only by shell startup files', async () => {
+      readFileSyncMock.mockImplementation((path: string) =>
+        path.endsWith('.zshrc')
+          ? 'export OPENCODE_CONFIG_DIR="/tmp/user-opencode-from-zshrc"\n'
+          : ''
+      )
+
+      const env = await spawnAndGetEnv(undefined, {
+        HOME: '/home/tester',
+        OPENCODE_CONFIG_DIR: undefined
+      })
+
+      expect(openCodeBuildPtyEnvMock).toHaveBeenCalledWith(
+        expect.any(String),
+        '/tmp/user-opencode-from-zshrc'
+      )
+      expect(env.OPENCODE_CONFIG_DIR).toBe('/tmp/orca-opencode-overlay')
+      expect(env.ORCA_OPENCODE_CONFIG_DIR).toBe('/tmp/orca-opencode-overlay')
+      expect(env.ORCA_OPENCODE_SOURCE_CONFIG_DIR).toBe('/tmp/user-opencode-from-zshrc')
+    })
+
     it('injects the Pi agent overlay env into Orca terminal PTYs', async () => {
       const env = await spawnAndGetEnv(undefined, { PI_CODING_AGENT_DIR: '/tmp/user-pi-agent' })
       expect(piBuildPtyEnvMock).toHaveBeenCalledWith(expect.any(String), '/tmp/user-pi-agent')
       expect(env.PI_CODING_AGENT_DIR).toBe('/tmp/orca-pi-agent-overlay')
       expect(env.ORCA_PI_CODING_AGENT_DIR).toBe('/tmp/orca-pi-agent-overlay')
+      expect(env.ORCA_PI_SOURCE_AGENT_DIR).toBe('/tmp/user-pi-agent')
+    })
+
+    it('mirrors the original Pi source dir when launched from an Orca overlay shell', async () => {
+      const env = await spawnAndGetEnv({
+        PI_CODING_AGENT_DIR: '/tmp/parent-orca-pi-overlay',
+        ORCA_PI_SOURCE_AGENT_DIR: '/tmp/user-pi-agent'
+      })
+      expect(piBuildPtyEnvMock).toHaveBeenCalledWith(expect.any(String), '/tmp/user-pi-agent')
+      expect(env.PI_CODING_AGENT_DIR).toBe('/tmp/orca-pi-agent-overlay')
+      expect(env.ORCA_PI_CODING_AGENT_DIR).toBe('/tmp/orca-pi-agent-overlay')
+      expect(env.ORCA_PI_SOURCE_AGENT_DIR).toBe('/tmp/user-pi-agent')
+    })
+
+    it('mirrors Pi config exported only by shell startup files', async () => {
+      readFileSyncMock.mockImplementation((path: string) =>
+        path.endsWith('.zshrc') ? 'export PI_CODING_AGENT_DIR="$HOME/.config/pi-agent"\n' : ''
+      )
+
+      const env = await spawnAndGetEnv(undefined, {
+        HOME: '/home/tester',
+        PI_CODING_AGENT_DIR: undefined
+      })
+
+      expect(piBuildPtyEnvMock).toHaveBeenCalledWith(
+        expect.any(String),
+        '/home/tester/.config/pi-agent'
+      )
+      expect(env.PI_CODING_AGENT_DIR).toBe('/tmp/orca-pi-agent-overlay')
+      expect(env.ORCA_PI_CODING_AGENT_DIR).toBe('/tmp/orca-pi-agent-overlay')
+      expect(env.ORCA_PI_SOURCE_AGENT_DIR).toBe('/home/tester/.config/pi-agent')
     })
 
     it('injects the Claude/Codex hook receiver env into Orca terminal PTYs', async () => {
@@ -531,6 +604,21 @@ describe('registerPtyHandlers', () => {
         )
         expect(env.OPENCODE_CONFIG_DIR).toBe('/tmp/orca-opencode-overlay')
         expect(env.ORCA_OPENCODE_CONFIG_DIR).toBe('/tmp/orca-opencode-overlay')
+        expect(env.ORCA_OPENCODE_SOURCE_CONFIG_DIR).toBe('/user/custom/opencode')
+      })
+
+      it('uses source OpenCode config env instead of remirroring a parent overlay', async () => {
+        const env = await daemonSpawnAndGetEnv({
+          OPENCODE_CONFIG_DIR: '/tmp/parent-orca-opencode-overlay',
+          ORCA_OPENCODE_SOURCE_CONFIG_DIR: '/user/custom/opencode'
+        })
+        expect(openCodeBuildPtyEnvMock).toHaveBeenCalledWith(
+          expect.any(String),
+          '/user/custom/opencode'
+        )
+        expect(env.OPENCODE_CONFIG_DIR).toBe('/tmp/orca-opencode-overlay')
+        expect(env.ORCA_OPENCODE_CONFIG_DIR).toBe('/tmp/orca-opencode-overlay')
+        expect(env.ORCA_OPENCODE_SOURCE_CONFIG_DIR).toBe('/user/custom/opencode')
       })
 
       it('injects Pi overlay env (PI_CODING_AGENT_DIR) on the daemon path', async () => {
@@ -541,6 +629,7 @@ describe('registerPtyHandlers', () => {
         expect(piBuildPtyEnvMock).toHaveBeenCalledWith(expect.any(String), '/user/.pi/agent')
         expect(env.PI_CODING_AGENT_DIR).toBe('/tmp/orca-pi-agent-overlay')
         expect(env.ORCA_PI_CODING_AGENT_DIR).toBe('/tmp/orca-pi-agent-overlay')
+        expect(env.ORCA_PI_SOURCE_AGENT_DIR).toBe('/user/.pi/agent')
       })
 
       it('injects the selected Codex home on the daemon path', async () => {
@@ -794,8 +883,10 @@ describe('registerPtyHandlers', () => {
         expect(env.ORCA_ENABLE_GIT_ATTRIBUTION).toBeUndefined()
         expect(env.OPENCODE_CONFIG_DIR).toBeUndefined()
         expect(env.ORCA_OPENCODE_CONFIG_DIR).toBeUndefined()
+        expect(env.ORCA_OPENCODE_SOURCE_CONFIG_DIR).toBeUndefined()
         expect(env.PI_CODING_AGENT_DIR).toBeUndefined()
         expect(env.ORCA_PI_CODING_AGENT_DIR).toBeUndefined()
+        expect(env.ORCA_PI_SOURCE_AGENT_DIR).toBeUndefined()
         expect(env.CODEX_HOME).toBeUndefined()
         expect(env.FOO).toBe('bar')
         expect(openCodeBuildPtyEnvMock).not.toHaveBeenCalled()
@@ -1316,10 +1407,9 @@ describe('registerPtyHandlers', () => {
       })
       expect(shell).toBe('/bin/zsh')
       expect(args).toEqual(['-l'])
-      expect(options.env.OPENCODE_CONFIG_DIR).toBeUndefined()
-      expect(options.env.ORCA_OPENCODE_CONFIG_DIR).toBeUndefined()
       expect(options.env.PI_CODING_AGENT_DIR).toBe('/tmp/orca-pi-agent-overlay')
       expect(options.env.ORCA_PI_CODING_AGENT_DIR).toBe('/tmp/orca-pi-agent-overlay')
+      expect(options.env.ORCA_PI_SOURCE_AGENT_DIR).toBe('/tmp/user-pi-agent')
       expect(options.env.ZDOTDIR).toBe('/tmp/orca-user-data/shell-ready/zsh')
       expect(options.env.ORCA_SHELL_READY_MARKER).toBe('0')
     } finally {
