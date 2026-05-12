@@ -202,13 +202,21 @@ export function buildPtyHostEnv(
     process.env.ORCA_OPENCODE_SOURCE_CONFIG_DIR ??
     baseEnv.OPENCODE_CONFIG_DIR ??
     process.env.OPENCODE_CONFIG_DIR ??
-    readShellStartupEnvVar('OPENCODE_CONFIG_DIR', baseEnv.HOME ?? process.env.HOME)
+    readShellStartupEnvVar(
+      'OPENCODE_CONFIG_DIR',
+      baseEnv.HOME ?? process.env.HOME,
+      baseEnv.SHELL ?? process.env.SHELL
+    )
   const preexistingPiAgentDir =
     baseEnv.ORCA_PI_SOURCE_AGENT_DIR ??
     process.env.ORCA_PI_SOURCE_AGENT_DIR ??
     baseEnv.PI_CODING_AGENT_DIR ??
     process.env.PI_CODING_AGENT_DIR ??
-    readShellStartupEnvVar('PI_CODING_AGENT_DIR', baseEnv.HOME ?? process.env.HOME)
+    readShellStartupEnvVar(
+      'PI_CODING_AGENT_DIR',
+      baseEnv.HOME ?? process.env.HOME,
+      baseEnv.SHELL ?? process.env.SHELL
+    )
 
   // Why: OPENCODE_CONFIG_DIR is a singular path, not a colon-list, so a user
   // value cannot coexist with an Orca-only injection. Hand the user's value

@@ -139,7 +139,9 @@ describe('registerPtyHandlers', () => {
 
   const savedPiAgentDir = process.env.PI_CODING_AGENT_DIR
   const savedOrcaOpenCodeConfigDir = process.env.ORCA_OPENCODE_CONFIG_DIR
+  const savedOrcaOpenCodeSourceConfigDir = process.env.ORCA_OPENCODE_SOURCE_CONFIG_DIR
   const savedOrcaPiAgentDir = process.env.ORCA_PI_CODING_AGENT_DIR
+  const savedOrcaPiSourceAgentDir = process.env.ORCA_PI_SOURCE_AGENT_DIR
 
   beforeEach(() => {
     delete process.env.OPENCODE_CONFIG_DIR
@@ -222,10 +224,20 @@ describe('registerPtyHandlers', () => {
     } else {
       process.env.ORCA_OPENCODE_CONFIG_DIR = savedOrcaOpenCodeConfigDir
     }
+    if (savedOrcaOpenCodeSourceConfigDir === undefined) {
+      delete process.env.ORCA_OPENCODE_SOURCE_CONFIG_DIR
+    } else {
+      process.env.ORCA_OPENCODE_SOURCE_CONFIG_DIR = savedOrcaOpenCodeSourceConfigDir
+    }
     if (savedOrcaPiAgentDir === undefined) {
       delete process.env.ORCA_PI_CODING_AGENT_DIR
     } else {
       process.env.ORCA_PI_CODING_AGENT_DIR = savedOrcaPiAgentDir
+    }
+    if (savedOrcaPiSourceAgentDir === undefined) {
+      delete process.env.ORCA_PI_SOURCE_AGENT_DIR
+    } else {
+      process.env.ORCA_PI_SOURCE_AGENT_DIR = savedOrcaPiSourceAgentDir
     }
   })
 
@@ -396,25 +408,34 @@ describe('registerPtyHandlers', () => {
       expect(env.ORCA_OPENCODE_SOURCE_CONFIG_DIR).toBe('/tmp/user-opencode-config')
     })
 
-    it('mirrors OpenCode config exported only by shell startup files', async () => {
-      readFileSyncMock.mockImplementation((path: string) =>
-        path.endsWith('.zshrc')
-          ? 'export OPENCODE_CONFIG_DIR="/tmp/user-opencode-from-zshrc"\n'
-          : ''
-      )
+    it('reproduces issue #1534: GUI-launched Orca mirrors zshrc-only OpenCode config', async () => {
+      // Why: the reporter's app process did not inherit OPENCODE_CONFIG_DIR;
+      // their interactive zsh startup later exported a company config repo.
+      readFileSyncMock.mockImplementation((path: string) => {
+        if (path.endsWith('.zshrc')) {
+          return [
+            '# Company-wide OpenCode config loaded by interactive shells',
+            'export OPENCODE_CONFIG_DIR="$HOME/company/opencode-config"',
+            ''
+          ].join('\n')
+        }
+        return ''
+      })
 
       const env = await spawnAndGetEnv(undefined, {
-        HOME: '/home/tester',
-        OPENCODE_CONFIG_DIR: undefined
+        HOME: '/home/pim',
+        OPENCODE_CONFIG_DIR: undefined,
+        ORCA_OPENCODE_SOURCE_CONFIG_DIR: undefined
       })
 
       expect(openCodeBuildPtyEnvMock).toHaveBeenCalledWith(
         expect.any(String),
-        '/tmp/user-opencode-from-zshrc'
+        '/home/pim/company/opencode-config'
       )
       expect(env.OPENCODE_CONFIG_DIR).toBe('/tmp/orca-opencode-overlay')
       expect(env.ORCA_OPENCODE_CONFIG_DIR).toBe('/tmp/orca-opencode-overlay')
-      expect(env.ORCA_OPENCODE_SOURCE_CONFIG_DIR).toBe('/tmp/user-opencode-from-zshrc')
+      expect(env.ORCA_OPENCODE_SOURCE_CONFIG_DIR).toBe('/home/pim/company/opencode-config')
+      expect(env.OPENCODE_CONFIG_DIR).not.toBe(env.ORCA_OPENCODE_SOURCE_CONFIG_DIR)
     })
 
     it('injects the Pi agent overlay env into Orca terminal PTYs', async () => {
@@ -1487,6 +1508,8 @@ describe('registerPtyHandlers', () => {
       })
       expect(shell).toBe('/bin/zsh')
       expect(args).toEqual(['-l'])
+      expect(options.env.OPENCODE_CONFIG_DIR).toBeUndefined()
+      expect(options.env.ORCA_OPENCODE_CONFIG_DIR).toBeUndefined()
       expect(options.env.PI_CODING_AGENT_DIR).toBe('/tmp/orca-pi-agent-overlay')
       expect(options.env.ORCA_PI_CODING_AGENT_DIR).toBe('/tmp/orca-pi-agent-overlay')
       expect(options.env.ORCA_PI_SOURCE_AGENT_DIR).toBe('/tmp/user-pi-agent')
