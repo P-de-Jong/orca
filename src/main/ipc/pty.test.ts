@@ -424,6 +424,7 @@ describe('registerPtyHandlers', () => {
 
       const env = await spawnAndGetEnv(undefined, {
         HOME: '/home/pim',
+        SHELL: '/bin/zsh',
         OPENCODE_CONFIG_DIR: undefined,
         ORCA_OPENCODE_SOURCE_CONFIG_DIR: undefined
       })
@@ -464,6 +465,7 @@ describe('registerPtyHandlers', () => {
 
       const env = await spawnAndGetEnv(undefined, {
         HOME: '/home/tester',
+        SHELL: '/bin/zsh',
         PI_CODING_AGENT_DIR: undefined
       })
 
